@@ -161,3 +161,6 @@ cython_debug/
 
 # env
 .envrc
+
+# Ignore dynaconf secret files
+.secrets.*
