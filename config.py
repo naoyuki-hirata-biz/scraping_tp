@@ -1,9 +1,9 @@
-
 from dynaconf import Dynaconf
 
 settings = Dynaconf(
-    envvar_prefix="DYNACONF",
-    settings_files=['settings.py', '.secrets.py'],
+    environments=True,
+    envvar_prefix='DYNACONF',
+    settings_files=['settings.json', '.secrets.json'],
 )
 
 # `envvar_prefix` = export envvars with `export DYNACONF_FOO=bar`.

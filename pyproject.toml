@@ -2,12 +2,17 @@
 name = "scraping-tp"
 version = "0.1.0"
 description = ""
-authors = [""]
+authors = ["unknown"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.9"
 dynaconf = "^3.2.5"
+requests = "^2.31.0"
+beautifulsoup4 = "^4.12.3"
+requests-file = "^2.0.0"
+fake-useragent = "^1.5.1"
+selenium = "^4.19.0"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -17,25 +22,27 @@ pytest = "^8.1.1"
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
-# See https://qiita.com/taskforce_Hisui/items/9b89c5fad5ad327af9db
 [tool.ruff]
-line-length = 119
-select = ["ALL"]
-ignore = [
-    "D",
-    "PLR0913",
-    "ANN002",
-    "ANN003",
-    "ANN101",
-]
+line-length = 140
 
-[tool.ruff.per-file-ignores]
-"tests/**/*.py" = [
-    "S101",
-    "ANN201",
-    "N802",
-    "ARG",
-]
+[tool.ruff.lint]
+# 1. Enable flake8-bugbear (`B`) rules, in addition to the defaults.
+select = ["E4", "E7", "E9", "F", "B"]
+
+# 2. Avoid enforcing line-length violations (`E501`)
+ignore = ["E501"]
+
+# 3. Avoid trying to fix flake8-bugbear (`B`) violations.
+unfixable = ["B"]
+
+# 4. Ignore `E402` (import violations) in all `__init__.py` files, and in select subdirectories.
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["E402"]
+"**/{tests,docs,tools}/*" = ["E402"]
+
+[tool.ruff.format]
+# 5. Use single quotes for non-triple-quoted strings.
+quote-style = "single"
 
 [tool.ruff.pydocstyle]
 convention = "google"
