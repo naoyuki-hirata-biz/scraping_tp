@@ -15,14 +15,16 @@ optional arguments:
 import argparse
 
 from config import settings
-from scraping_tp.csv_creator import CsvCreator
+from scraping_tp.csv_creator import CsvCreatorFactory
 
 
 def get_args():
     """Return arguments."""
     parser = argparse.ArgumentParser(description='Usage')
     parser.add_argument('--keyword', help='keyword (single word)', required=True, type=str)
-    parser.add_argument('--records', help='Maximum number of records', type=int)
+    parser.add_argument(
+        '--lib', help='use requests or selenium library (default: requests)', choices=['requests', 'selenium'], default='requests'
+    )
     parser.add_argument('--timeout', help='Timeout time to find the element (seconds) (default: 90)', type=int, default=90)
     parser.add_argument('--retry', help='Number of retries (default: 3)', type=int, default=3)
 
@@ -38,7 +40,8 @@ def get_args():
 def main():
     """Main processing."""
     arguments = get_args()
-    CsvCreator(**arguments).create()
+    creator = CsvCreatorFactory().create_csv_creator(**arguments)
+    creator.create()
 
 
 if __name__ == '__main__':

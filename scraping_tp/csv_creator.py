@@ -9,6 +9,7 @@ import shutil
 import time
 import traceback
 import urllib.parse
+from abc import abstractmethod
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 
@@ -16,9 +17,6 @@ import requests
 from bs4 import BeautifulSoup
 from fake_useragent import UserAgent
 from requests_file import FileAdapter
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.support.ui import WebDriverWait
 
 
 class CsvCreator:
@@ -33,11 +31,8 @@ class CsvCreator:
         self.filename = kwargs['filename']
         self.encoding = kwargs['encoding']
         self.uri = kwargs['uri']
-        self.records = kwargs['records']
         self.timeout = kwargs['timeout']
         self.retry = kwargs['retry']
-        self.driver = None
-        self.wait = None
 
     def create(self) -> CsvCreator:
         """Output CSV file."""
@@ -49,33 +44,62 @@ class CsvCreator:
             traceback.print_exc()
             self._on_error()
 
+    def _now(self) -> datetime:
+        """Returns the current time."""
+        return datetime.now(self.TIMEZONE)
+
+    def _now_str(self) -> str:
+        """Returns the current time as a string."""
+        return self._now().strftime('%Y年%m月%d日 %H:%M:%S')
+
+    @abstractmethod
     def _setUp(self):
         """setUp."""
-        service = Service(executable_path='/usr/bin/chromedriver')
-        options = webdriver.ChromeOptions()
-        options.add_argument('--headless')
-        options.add_argument('--no-sandbox')
-        options.add_argument('--disable-dev-shm-usage')
-        self.driver = webdriver.Chrome(service=service, options=options)
-        self.wait = WebDriverWait(driver=self.driver, timeout=self.timeout)
 
-        if os.path.isfile(self.filename):
-            os.remove(self.filename)
-        if self.uri.startswith('file:///opt/python/static/html/'):
-            shutil.unpack_archive('static/html.zip', 'static/html')
-
+    @abstractmethod
     def _tearDown(self):
         """tearDown."""
-        if os.path.isdir('static/html'):
-            shutil.rmtree('static/html')
-
-        self.driver.close()
-        self.driver.quit()
 
     def _on_error(self):
         """Cleaning up after an error."""
         if os.path.isfile(self.filename):
             os.remove(self.filename)
+
+    @abstractmethod
+    def _write_csv(self):
+        """Write to CSV file"""
+
+
+class CsvCreatorFactory:
+    """Factory class for CsvCreator."""
+
+    @staticmethod
+    def create_csv_creator(**kwargs) -> CsvCreator:
+        """Returns an instance of CsvCreator."""
+
+        lib = kwargs['lib']
+        if lib == 'requests':
+            return RequestsCsvCreator(**kwargs)
+        if lib == 'selenium':
+            # return SeleniumCsvCreator(**kwargs)
+            pass
+        raise ValueError(f'Unknown type: {lib}')
+
+
+class RequestsCsvCreator(CsvCreator):
+    """CsvCreator for requests."""
+
+    # Override
+    def _setUp(self):
+        if os.path.isfile(self.filename):
+            os.remove(self.filename)
+        if self.uri.startswith('file:///opt/python/static/html/'):
+            shutil.unpack_archive('static/html.zip', 'static/html')
+
+    # Override
+    def _tearDown(self):
+        if os.path.isdir('static/html'):
+            shutil.rmtree('static/html')
 
     def __beautiful_soup_instance(self, url, from_param):
         session = requests.Session()
@@ -102,8 +126,7 @@ class CsvCreator:
 
     # Override
     def _write_csv(self):
-        """Write to CSV file"""
-        print('INFO ', datetime.now(self.TIMEZONE), f'{self.keyword}のCSVを出力します')
+        print('INFO ', self._now(), f'{self.keyword}のCSVを出力します')
         keyword_param = urllib.parse.quote(self.keyword)
         page = 1
         company_count = 0
@@ -122,7 +145,7 @@ class CsvCreator:
                 soup = self.__beautiful_soup_instance(search_url, from_param=from_param)
                 json_element = soup.find('script', type='application/ld+json')
                 if not json_element:
-                    print('INFO ', datetime.now(self.TIMEZONE), f'{self.keyword}({area})を{company_count}件出力しました')
+                    print('INFO ', self._now(), f'{self.keyword}({area})を{company_count}件出力しました')
                     break
 
                 json_ld = json.loads(json_element.text)
@@ -136,15 +159,14 @@ class CsvCreator:
                     row.append(item['url'])
                     row.append(self.keyword)
                     row.append(area)
-                    now = datetime.now(self.TIMEZONE)
-                    row.append(now.strftime('%Y年%m月%d日 %H:%M:%S'))
+                    row.append(self._now_str())
                     company_count += 1
                     with open(self.filename, 'a', encoding=self.encoding, newline='') as file:
                         writer = csv.writer(file)
                         writer.writerow(row)
 
                 if len(json_ld['itemListElement']) < PER_PAGE:
-                    print('INFO ', datetime.now(self.TIMEZONE), f'{self.keyword}({area})を{company_count}件出力しました')
+                    print('INFO ', self._now(), f'{self.keyword}({area})を{company_count}件出力しました')
                     page = 1
                     company_count = 0
                     time.sleep(3)
@@ -153,4 +175,4 @@ class CsvCreator:
                 page += 1
                 time.sleep(3)
 
-        print('INFO ', datetime.now(self.TIMEZONE), f'{self.keyword}のCSVを出力しました')
+        print('INFO ', self._now(), f'{self.keyword}のCSVを出力しました')
