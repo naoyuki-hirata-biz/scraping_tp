@@ -25,10 +25,10 @@ services:
         - UID=${DOCKER_UID:-1000}
         - GID=${DOCKER_GID:-1000}
         - USERNAME=${DOCKER_USERNAME:-dev}
-    working_dir: '/opt/python'
+    working_dir: '/opt/python/scraping_tp'
     tty: true
     volumes:
-      - .:/opt/python
+      - .:/opt/python/scraping_tp
     depends_on:
       mysql:
         condition: service_healthy
