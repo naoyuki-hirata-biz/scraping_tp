@@ -13,6 +13,7 @@ beautifulsoup4 = "^4.12.3"
 requests-file = "^2.0.0"
 fake-useragent = "^1.5.1"
 selenium = "^4.19.0"
+pyvirtualdisplay = "^3.0"
 
 
 [tool.poetry.group.dev.dependencies]

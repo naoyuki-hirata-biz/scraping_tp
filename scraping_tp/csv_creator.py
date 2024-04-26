@@ -17,6 +17,11 @@ import requests
 from bs4 import BeautifulSoup
 from fake_useragent import UserAgent
 from requests_file import FileAdapter
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
 
 
 class CsvCreator:
@@ -81,8 +86,7 @@ class CsvCreatorFactory:
         if lib == 'requests':
             return RequestsCsvCreator(**kwargs)
         if lib == 'selenium':
-            # return SeleniumCsvCreator(**kwargs)
-            pass
+            return SeleniumCsvCreator(**kwargs)
         raise ValueError(f'Unknown type: {lib}')
 
 
@@ -107,7 +111,7 @@ class RequestsCsvCreator(CsvCreator):
 
         if url.startswith('http'):
             target_url = f'{url}&from={from_param}'
-            res = session.get(target_url, headers={'User-Agent': user_agent, 'Content-Type': 'text/html'})
+            res = session.get(target_url, headers={'User-Agent': user_agent, 'Content-Type': 'text/html'}, timeout=30)
             return BeautifulSoup(res.content.decode('utf-8'), 'html.parser')
 
         parsed_url = urlparse(url)
@@ -144,35 +148,190 @@ class RequestsCsvCreator(CsvCreator):
                 search_url = f'{self.uri}/keyword?areaword={area_param}&keyword={keyword_param}&sort=01'
                 soup = self.__beautiful_soup_instance(search_url, from_param=from_param)
                 json_element = soup.find('script', type='application/ld+json')
-                if not json_element:
-                    print('INFO ', self._now(), f'{self.keyword}({area})を{company_count}件出力しました')
-                    break
+                company_elements = []
+                row_count = 0
+                if json_element:
+                    json_ld = json.loads(json_element.text)
+                    row_count = self._write_csv_by_json(area=area, json=json_ld)
 
-                json_ld = json.loads(json_element.text)
-                for element in json_ld['itemListElement']:
-                    row = []
-                    item = element.get('item', {})
-                    row.append(item['name'])  # 社名
-                    row.append(item['telephone'])  # 番号
-                    address = item.get('address', {})
-                    row.append(f"{address['addressLocality']}{address.get('streetAddress', '')}")  # 住所
-                    row.append(item['url'])
-                    row.append(self.keyword)
-                    row.append(area)
-                    row.append(self._now_str())
-                    company_count += 1
-                    with open(self.filename, 'a', encoding=self.encoding, newline='') as file:
-                        writer = csv.writer(file)
-                        writer.writerow(row)
+                else:
+                    company_elements = soup.select(
+                        'div.dev-only-search-result-itemContainer[role="listitem"],div.dev-only-search-searchResultsBottom-itemContainer[role="listitem"]'
+                    )
+                    row_count = self._write_csv_by_html(area=area, elements=company_elements)
 
-                if len(json_ld['itemListElement']) < PER_PAGE:
+                company_count += row_count
+                if row_count < PER_PAGE:
                     print('INFO ', self._now(), f'{self.keyword}({area})を{company_count}件出力しました')
                     page = 1
                     company_count = 0
-                    time.sleep(3)
+                    time.sleep(10)
                     break
 
                 page += 1
-                time.sleep(3)
+                time.sleep(10)
 
         print('INFO ', self._now(), f'{self.keyword}のCSVを出力しました')
+
+    def _write_csv_by_json(self, area='', json=None) -> int:
+        company_count = 0
+        if not json:
+            return company_count
+
+        for element in json:
+            row = []
+            item = element.get('item', {})
+            row.append(item['name'])  # 社名
+            row.append(item['telephone'])  # 番号
+            address = item.get('address', {})
+            row.append(f"{address['addressLocality']}{address.get('streetAddress', '')}")  # 住所
+            row.append(item['url'])
+            row.append(self.keyword)
+            row.append(area)
+            row.append(self._now_str())
+            company_count += 1
+            with open(self.filename, 'a', encoding=self.encoding, newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow(row)
+
+        return company_count
+
+    def _write_csv_by_html(self, area='', elements=None) -> int:
+        company_count = 0
+        if not elements:
+            return company_count
+
+        for element in elements:
+            row = []
+            print(element.select_one('p.font_8 a'))
+            row.append('')  # 社名
+            row.append('')  # 番号
+            row.append('')  # 住所
+            row.append('')  # URL
+            row.append(self.keyword)  # 検索キーワード
+            row.append(area)  # 検索地域
+            row.append(self._now_str())  # 日時
+            company_count += 1
+            with open(self.filename, 'a', encoding=self.encoding, newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow(row)
+
+        return company_count
+
+
+class SeleniumCsvCreator(CsvCreator):
+    """CsvCreator for selenium."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.browser = kwargs['browser']
+        self.display = None
+        self.driver = None
+        self.wait = None
+
+    # Override
+    def _setUp(self):
+        if self.browser == 'chrome':
+            service = Service(executable_path='/usr/bin/chromedriver')
+            options = webdriver.ChromeOptions()
+            options.add_argument('--headless=new')
+            options.add_argument('--no-sandbox')
+            options.add_argument('--disable-dev-shm-usage')
+            options.add_argument('--enable-javascript')
+            options.add_argument('----user-agent={UserAgent().chrome}')
+            self.driver = webdriver.Chrome(service=service, options=options)
+        elif self.browser == 'firefox':
+            service = Service(executable_path='/home/dev/.cargo/bin/geckodriver')
+            options = webdriver.FirefoxOptions()
+            options.add_argument('--headless')
+            options.add_argument('--enable-javascript')
+            options.add_argument('----user-agent={UserAgent().firefox}')
+            self.driver = webdriver.Firefox(service=service, options=options)
+        else:
+            raise ValueError(f'Unknown browser {self.browser}')
+
+        self.wait = WebDriverWait(driver=self.driver, timeout=self.timeout)
+
+        if os.path.isfile(self.filename):
+            os.remove(self.filename)
+        if self.uri.startswith('file:///opt/python/static/html/'):
+            shutil.unpack_archive('static/html.zip', 'static/html')
+
+    # Override
+    def _write_csv(self):
+        print('INFO ', self._now(), f'{self.keyword}のCSVを出力します')
+        keyword_param = urllib.parse.quote(self.keyword)
+        page = 1
+        company_count = 0
+        PER_PAGE = 20
+
+        with open(self.filename, 'w', encoding=self.encoding, newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(self.CSV_HEADER)
+
+        for area in self.areas:
+            area_param = urllib.parse.quote(area)
+            while True:
+                row = []
+                from_param = (page - 1) * PER_PAGE
+                search_url = f'{self.uri}/keyword?from={from_param}&areaword={area_param}&keyword={keyword_param}&sort=01'
+                self.driver.get(search_url)
+                self.wait.until(
+                    EC.visibility_of_element_located((By.CSS_SELECTOR, 'div.dev-only-search-result-itemContainer[role="listitem"]'))
+                )
+                time.sleep(10)  # 描画が完了するのにタイムラグが有る
+                elements = self.driver.find_elements(By.CSS_SELECTOR, 'div.dev-only-search-result-itemContainer[role="listitem"]')
+                row_count = 0
+                for element in elements:
+                    company_element = element.find_element(By.CSS_SELECTOR, 'div.dev-only-searchResultsTop-title > p.font_8 > a')
+                    row.append(company_element.text)  # 社名
+                    phone_element = element.find_element(By.CSS_SELECTOR, 'div.dev-only-searchResultsTop-phone > p.font_3 > span')
+                    row.append(phone_element.text)  # 番号
+                    address_element = element.find_element(By.CSS_SELECTOR, 'div.dev-only-searchResultsTop-address > p.font_8 > span')
+                    row.append(address_element.text)  # 住所
+                    row.append(company_element.get_attribute('href'))  # URL
+                    row.append(self.keyword)  # 検索キーワード
+                    row.append(area)  # 検索地域
+                    row.append(self._now_str)  # 日時
+                row_count += len(elements)
+
+                elements = self.driver.find_elements(
+                    By.CSS_SELECTOR, 'div.dev-only-search-searchResultsBottom-itemContainer[role="listitem"]'
+                )
+                for element in elements:
+                    company_element = element.find_element(By.CSS_SELECTOR, 'div.dev-only-searchResultsBottom-title > p.font_8 > a')
+                    row.append(company_element.text)  # 社名
+                    phone_element = element.find_element(By.CSS_SELECTOR, 'div.dev-only-searchResultsBottom-phone > p.font_3 > span')
+                    row.append(phone_element.text)  # 番号
+                    address_element = element.find_element(By.CSS_SELECTOR, 'div.dev-only-searchResultsBottom-address > p.font_8 > span')
+                    row.append(address_element.text)  # 住所
+                    row.append(company_element.get_attribute('href'))  # URL
+                    row.append(self.keyword)  # 検索キーワード
+                    row.append(area)  # 検索地域
+                    row.append(self._now_str)  # 日時
+                row_count += len(elements)
+
+                company_count += row_count
+                with open(self.filename, 'a', encoding=self.encoding, newline='') as file:
+                    writer = csv.writer(file)
+                    writer.writerow(row)
+
+                if row_count < PER_PAGE:
+                    print('INFO ', self._now(), f'{self.keyword}({area})を{company_count}件出力しました')
+                    page = 1
+                    company_count = 0
+                    time.sleep(10)
+                    break
+
+                page += 1
+                time.sleep(10)
+
+        print('INFO ', self._now(), f'{self.keyword}のCSVを出力しました')
+
+    # Override
+    def _tearDown(self):
+        if os.path.isdir('static/html'):
+            shutil.rmtree('static/html')
+
+        self.driver.close()
+        self.driver.quit()

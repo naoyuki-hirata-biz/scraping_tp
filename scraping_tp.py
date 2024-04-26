@@ -23,8 +23,9 @@ def get_args():
     parser = argparse.ArgumentParser(description='Usage')
     parser.add_argument('--keyword', help='keyword (single word)', required=True, type=str)
     parser.add_argument(
-        '--lib', help='use requests or selenium library (default: requests)', choices=['requests', 'selenium'], default='requests'
+        '--lib', help='use requests or selenium library (default: selenium)', choices=['requests', 'selenium'], default='selenium'
     )
+    parser.add_argument('--browser', help='Browser when using Selenium (default: chrome)', choices=['chrome', 'firefox'], default='chrome')
     parser.add_argument('--timeout', help='Timeout time to find the element (seconds) (default: 90)', type=int, default=90)
     parser.add_argument('--retry', help='Number of retries (default: 3)', type=int, default=3)
 
