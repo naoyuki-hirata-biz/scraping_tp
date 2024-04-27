@@ -21,6 +21,12 @@ RUN apt-get update -y && \
     firefox-esr \
     xvfb
 
+ RUN curl -fL -o /tmp/geckodriver.tar.gz \
+     https://github.com/mozilla/geckodriver/releases/download/v0.34.0/geckodriver-v0.34.0-linux-aarch64.tar.gz && \
+     tar -xzf /tmp/geckodriver.tar.gz -C /tmp/ && \
+     chmod +x /tmp/geckodriver && \
+     mv /tmp/geckodriver /usr/local/bin/
+
 RUN mkdir -p /opt/python/scraping_tp
 WORKDIR /opt/python/scraping_tp
 
@@ -32,9 +38,7 @@ RUN groupadd -g ${GID} ${USERNAME} \
 USER ${UID}
 
 RUN curl -sSL https://install.python-poetry.org | python3 -
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-ENV PATH $PATH:/home/${USERNAME}/.local/bin::/home/${USERNAME}/.cargo/bin
+ENV PATH $PATH:/home/${USERNAME}/.local/bin
 RUN poetry config virtualenvs.in-project true
-RUN cargo install geckodriver
 
 RUN echo 'alias ll="ls -la"' >> ~/.bashrc

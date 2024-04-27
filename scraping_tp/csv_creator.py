@@ -22,6 +22,7 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
+from typing_extensions import deprecated
 
 
 class CsvCreator:
@@ -90,6 +91,7 @@ class CsvCreatorFactory:
         raise ValueError(f'Unknown type: {lib}')
 
 
+@deprecated('It does not work well.')
 class RequestsCsvCreator(CsvCreator):
     """CsvCreator for requests."""
 
@@ -241,7 +243,7 @@ class SeleniumCsvCreator(CsvCreator):
             options.add_argument('----user-agent={UserAgent().chrome}')
             self.driver = webdriver.Chrome(service=service, options=options)
         elif self.browser == 'firefox':
-            service = Service(executable_path='/home/dev/.cargo/bin/geckodriver')
+            service = Service(executable_path='/usr/local/bin/geckodriver')
             options = webdriver.FirefoxOptions()
             options.add_argument('--headless')
             options.add_argument('--enable-javascript')
@@ -272,7 +274,6 @@ class SeleniumCsvCreator(CsvCreator):
         for area in self.areas:
             area_param = urllib.parse.quote(area)
             while True:
-                row = []
                 from_param = (page - 1) * PER_PAGE
                 search_url = f'{self.uri}/keyword?from={from_param}&areaword={area_param}&keyword={keyword_param}&sort=01'
                 self.driver.get(search_url)
@@ -283,6 +284,7 @@ class SeleniumCsvCreator(CsvCreator):
                 elements = self.driver.find_elements(By.CSS_SELECTOR, 'div.dev-only-search-result-itemContainer[role="listitem"]')
                 row_count = 0
                 for element in elements:
+                    row = []
                     company_element = element.find_element(By.CSS_SELECTOR, 'div.dev-only-searchResultsTop-title > p.font_8 > a')
                     row.append(company_element.text)  # 社名
                     phone_element = element.find_element(By.CSS_SELECTOR, 'div.dev-only-searchResultsTop-phone > p.font_3 > span')
@@ -293,12 +295,16 @@ class SeleniumCsvCreator(CsvCreator):
                     row.append(self.keyword)  # 検索キーワード
                     row.append(area)  # 検索地域
                     row.append(self._now_str)  # 日時
+                    with open(self.filename, 'a', encoding=self.encoding, newline='') as file:
+                        writer = csv.writer(file)
+                        writer.writerow(row)
                 row_count += len(elements)
 
                 elements = self.driver.find_elements(
                     By.CSS_SELECTOR, 'div.dev-only-search-searchResultsBottom-itemContainer[role="listitem"]'
                 )
                 for element in elements:
+                    row = []
                     company_element = element.find_element(By.CSS_SELECTOR, 'div.dev-only-searchResultsBottom-title > p.font_8 > a')
                     row.append(company_element.text)  # 社名
                     phone_element = element.find_element(By.CSS_SELECTOR, 'div.dev-only-searchResultsBottom-phone > p.font_3 > span')
@@ -308,13 +314,12 @@ class SeleniumCsvCreator(CsvCreator):
                     row.append(company_element.get_attribute('href'))  # URL
                     row.append(self.keyword)  # 検索キーワード
                     row.append(area)  # 検索地域
-                    row.append(self._now_str)  # 日時
+                    row.append(self._now_str())  # 日時
+                    with open(self.filename, 'a', encoding=self.encoding, newline='') as file:
+                        writer = csv.writer(file)
+                        writer.writerow(row)
                 row_count += len(elements)
-
                 company_count += row_count
-                with open(self.filename, 'a', encoding=self.encoding, newline='') as file:
-                    writer = csv.writer(file)
-                    writer.writerow(row)
 
                 if row_count < PER_PAGE:
                     print('INFO ', self._now(), f'{self.keyword}({area})を{company_count}件出力しました')
