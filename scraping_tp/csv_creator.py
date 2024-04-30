@@ -38,7 +38,7 @@ class CsvCreator:
         self.encoding = kwargs['encoding']
         self.uri = kwargs['uri']
         self.timeout = kwargs['timeout']
-        self.retry = kwargs['retry']
+        self.interval = kwargs['interval']
 
     def create(self) -> CsvCreator:
         """Output CSV file."""
@@ -57,6 +57,16 @@ class CsvCreator:
     def _now_str(self) -> str:
         """Returns the current time as a string."""
         return self._now().strftime('%Y年%m月%d日 %H:%M:%S')
+
+    def _search_url(self, from_param, area_param, keyword_param):
+        if self.uri.startswith('http'):
+            return f'{self.uri}/keyword?from={from_param}&areaword={area_param}&keyword={keyword_param}&sort=01'
+
+        parsed_url = urlparse(self.uri)
+        original_filename = os.path.basename(parsed_url.path)
+        filename, file_extension = os.path.splitext(original_filename)
+        filename = f"{filename.split('_')[0]}_{str(int(from_param / 20) + 1).zfill(2)}{file_extension}"
+        return self.uri.replace(original_filename, filename)
 
     @abstractmethod
     def _setUp(self):
@@ -99,13 +109,14 @@ class RequestsCsvCreator(CsvCreator):
     def _setUp(self):
         if os.path.isfile(self.filename):
             os.remove(self.filename)
-        if self.uri.startswith('file:///opt/python/static/html/'):
-            shutil.unpack_archive('static/html.zip', 'static/html')
+        print('uri', self.uri, self.uri.startswith('file:///opt/python/scraping_tp/scraping_tp/static/html/'))
+        if self.uri.startswith('file:///opt/python/scraping_tp/scraping_tp/static/html/'):
+            shutil.unpack_archive('scraping_tp/static/html.zip', 'scraping_tp/static/html')
 
     # Override
     def _tearDown(self):
-        if os.path.isdir('static/html'):
-            shutil.rmtree('static/html')
+        if os.path.isdir('scraping_tp/static/html'):
+            shutil.rmtree('scraping_tp/static/html')
 
     def __beautiful_soup_instance(self, url, from_param):
         session = requests.Session()
@@ -113,14 +124,14 @@ class RequestsCsvCreator(CsvCreator):
 
         if url.startswith('http'):
             target_url = f'{url}&from={from_param}'
-            res = session.get(target_url, headers={'User-Agent': user_agent, 'Content-Type': 'text/html'}, timeout=30)
+            res = session.get(target_url, headers={'User-Agent': user_agent, 'Content-Type': 'text/html'}, timeout=self.timeout)
             return BeautifulSoup(res.content.decode('utf-8'), 'html.parser')
 
         parsed_url = urlparse(url)
         original_filename = os.path.basename(parsed_url.path)
         filename, file_extension = os.path.splitext(original_filename)
         if from_param:
-            filename = filename.split('_')[0] + '_' + filename.split('_')[1] + '_' + str(from_param).zfill(2) + file_extension
+            filename = f"{filename.split('_')[0]}_{str(int(from_param / 20) + 1).zfill(2)}{file_extension}"
             target_url = url.replace(original_filename, filename)
         else:
             target_url = url
@@ -143,20 +154,23 @@ class RequestsCsvCreator(CsvCreator):
             writer.writerow(self.CSV_HEADER)
 
         for area in self.areas:
+            print('INFO ', self._now(), f'{area}のCSVを出力します')
             area_param = urllib.parse.quote(area)
 
             while True:
                 from_param = (page - 1) * PER_PAGE
-                search_url = f'{self.uri}/keyword?areaword={area_param}&keyword={keyword_param}&sort=01'
+                search_url = self._search_url(from_param, area_param, keyword_param)
                 soup = self.__beautiful_soup_instance(search_url, from_param=from_param)
                 json_element = soup.find('script', type='application/ld+json')
                 company_elements = []
                 row_count = 0
                 if json_element:
+                    print('INFO ', self._now(), f'JSONデータを解析します({page})')
                     json_ld = json.loads(json_element.text)
                     row_count = self._write_csv_by_json(area=area, json=json_ld)
 
                 else:
+                    print('INFO ', self._now(), f'HTMLを解析します({page})')
                     company_elements = soup.select(
                         'div.dev-only-search-result-itemContainer[role="listitem"],div.dev-only-search-searchResultsBottom-itemContainer[role="listitem"]'
                     )
@@ -164,14 +178,14 @@ class RequestsCsvCreator(CsvCreator):
 
                 company_count += row_count
                 if row_count < PER_PAGE:
-                    print('INFO ', self._now(), f'{self.keyword}({area})を{company_count}件出力しました')
+                    print('INFO ', self._now(), f'{area}を{company_count}件出力しました')
                     page = 1
                     company_count = 0
-                    time.sleep(10)
+                    time.sleep(self.interval)
                     break
 
                 page += 1
-                time.sleep(10)
+                time.sleep(self.interval)
 
         print('INFO ', self._now(), f'{self.keyword}のCSVを出力しました')
 
@@ -183,7 +197,10 @@ class RequestsCsvCreator(CsvCreator):
         for element in json:
             row = []
             item = element.get('item', {})
-            row.append(item['name'])  # 社名
+            company_name = item['name']
+            if not company_name:
+                raise ValueError('company name is none.')
+            row.append(company_name)  # 社名
             row.append(item['telephone'])  # 番号
             address = item.get('address', {})
             row.append(f"{address['addressLocality']}{address.get('streetAddress', '')}")  # 住所
@@ -205,11 +222,23 @@ class RequestsCsvCreator(CsvCreator):
 
         for element in elements:
             row = []
-            print(element.select_one('p.font_8 a'))
-            row.append('')  # 社名
-            row.append('')  # 番号
-            row.append('')  # 住所
-            row.append('')  # URL
+            company_name_element = element.select_one('p.font_8 a')
+            if not company_name_element:
+                raise ValueError('company name is none.')
+            row.append(company_name_element.text)  # 社名
+            tel_element = element.select_one(
+                'div.dev-only-searchResultsTop-phone > p > span,div.dev-only-searchResultsBottom-phone > p > span'
+            )
+            row.append(tel_element.text)  # 番号
+            address_element = element.select_one(
+                'div.dev-only-searchResultsTop-address > p > span,div.dev-only-searchResultsBottom-address > p > span'
+            )
+            row.append(address_element.text)  # 住所
+            website_element = element.select_one(
+                'div.dev-only-searchResultsTop-website > p > a,div.dev-only-searchResultsBottom-website > p > a'
+            )
+            website = website_element.get('href') if website_element else ''
+            row.append(website)  # URL
             row.append(self.keyword)  # 検索キーワード
             row.append(area)  # 検索地域
             row.append(self._now_str())  # 日時
@@ -256,8 +285,8 @@ class SeleniumCsvCreator(CsvCreator):
 
         if os.path.isfile(self.filename):
             os.remove(self.filename)
-        if self.uri.startswith('file:///opt/python/static/html/'):
-            shutil.unpack_archive('static/html.zip', 'static/html')
+        if self.uri.startswith('file:///opt/python/scraping_tp/scraping_tp/static/html/'):
+            shutil.unpack_archive('scraping_tp/static/html.zip', 'scraping_tp/static/html')
 
     # Override
     def _write_csv(self):
@@ -272,15 +301,17 @@ class SeleniumCsvCreator(CsvCreator):
             writer.writerow(self.CSV_HEADER)
 
         for area in self.areas:
+            print('INFO ', self._now(), f'{area}のCSVを出力します')
             area_param = urllib.parse.quote(area)
             while True:
                 from_param = (page - 1) * PER_PAGE
-                search_url = f'{self.uri}/keyword?from={from_param}&areaword={area_param}&keyword={keyword_param}&sort=01'
+                search_url = self._search_url(from_param, area_param, keyword_param)
+                print('search_url', search_url)
                 self.driver.get(search_url)
                 self.wait.until(
                     EC.visibility_of_element_located((By.CSS_SELECTOR, 'div.dev-only-search-result-itemContainer[role="listitem"]'))
                 )
-                time.sleep(10)  # 描画が完了するのにタイムラグが有る
+                time.sleep(self.interval)  # 描画が完了するのにタイムラグが有る
                 elements = self.driver.find_elements(By.CSS_SELECTOR, 'div.dev-only-search-result-itemContainer[role="listitem"]')
                 row_count = 0
                 for element in elements:
@@ -291,10 +322,12 @@ class SeleniumCsvCreator(CsvCreator):
                     row.append(phone_element.text)  # 番号
                     address_element = element.find_element(By.CSS_SELECTOR, 'div.dev-only-searchResultsTop-address > p.font_8 > span')
                     row.append(address_element.text)  # 住所
-                    row.append(company_element.get_attribute('href'))  # URL
+                    website_elements = element.find_elements(By.CSS_SELECTOR, 'div.dev-only-searchResultsTop-website > p.font_8 > a')
+                    website = website_elements[0].get_attribute('href') if website_elements else ''
+                    row.append(website)  # URL
                     row.append(self.keyword)  # 検索キーワード
                     row.append(area)  # 検索地域
-                    row.append(self._now_str)  # 日時
+                    row.append(self._now_str())  # 日時
                     with open(self.filename, 'a', encoding=self.encoding, newline='') as file:
                         writer = csv.writer(file)
                         writer.writerow(row)
@@ -311,7 +344,9 @@ class SeleniumCsvCreator(CsvCreator):
                     row.append(phone_element.text)  # 番号
                     address_element = element.find_element(By.CSS_SELECTOR, 'div.dev-only-searchResultsBottom-address > p.font_8 > span')
                     row.append(address_element.text)  # 住所
-                    row.append(company_element.get_attribute('href'))  # URL
+                    website_elements = element.find_elements(By.CSS_SELECTOR, 'div.dev-only-searchResultsBottom-website > p.font_8 > a')
+                    website = website_elements[0].get_attribute('href') if website_elements else ''
+                    row.append(website)  # URL
                     row.append(self.keyword)  # 検索キーワード
                     row.append(area)  # 検索地域
                     row.append(self._now_str())  # 日時
@@ -322,21 +357,21 @@ class SeleniumCsvCreator(CsvCreator):
                 company_count += row_count
 
                 if row_count < PER_PAGE:
-                    print('INFO ', self._now(), f'{self.keyword}({area})を{company_count}件出力しました')
+                    print('INFO ', self._now(), f'{area}を{company_count}件出力しました')
                     page = 1
                     company_count = 0
-                    time.sleep(10)
+                    time.sleep(self.interval)
                     break
 
                 page += 1
-                time.sleep(10)
+                time.sleep(self.interval)
 
         print('INFO ', self._now(), f'{self.keyword}のCSVを出力しました')
 
     # Override
     def _tearDown(self):
-        if os.path.isdir('static/html'):
-            shutil.rmtree('static/html')
+        if os.path.isdir('scraping_tp/static/html'):
+            shutil.rmtree('scraping_tp/static/html')
 
         self.driver.close()
         self.driver.quit()

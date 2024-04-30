@@ -4,7 +4,8 @@
     "filename": "results.csv",
     "csv_file_encoding": "utf_8_sig",
     "areas": {
-      "tokyo": ["東京都西東京市"]
+      "tokyo": ["東京都西東京市"],
+      "saitama": ["埼玉県所沢市"]
     },
     "uri": "https://itp.ne.jp"
   },

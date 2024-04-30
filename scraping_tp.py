@@ -1,15 +1,20 @@
 """Script to export CSV.
 
-usage: scraping_tw.py [-h] --keyword KEYWORD [--records RECORDS] [--timeout TIMEOUT] [--retry RETRY]
+usage: scraping_tp.py [-h] --keyword KEYWORD [--lib {requests,selenium}]
+                      [--browser {chrome,firefox}] [--timeout TIMEOUT]
+                      [--interval INTERVAL]
 
 Usage
 
 optional arguments:
-  -h, --help         show this help message and exit
-  --keyword KEYWORD  keyword (single word)
-  --records RECORDS  Maximum number of records
-  --timeout TIMEOUT  Timeout time to find the element (seconds) (default: 90)
-  --retry RETRY      Number of retries (default: 3)
+  -h, --help            show this help message and exit
+  --keyword KEYWORD     keyword (single word)
+  --lib {requests,selenium}
+                        use requests or selenium library (default: selenium)
+  --browser {chrome,firefox}
+                        Browser when using Selenium (default: chrome)
+  --timeout TIMEOUT     Timeout time to find the element (seconds) (default: 90)
+  --interval INTERVAL   Interval time (seconds) (default: 10)
 """
 
 import argparse
@@ -27,7 +32,7 @@ def get_args():
     )
     parser.add_argument('--browser', help='Browser when using Selenium (default: chrome)', choices=['chrome', 'firefox'], default='chrome')
     parser.add_argument('--timeout', help='Timeout time to find the element (seconds) (default: 90)', type=int, default=90)
-    parser.add_argument('--retry', help='Number of retries (default: 3)', type=int, default=3)
+    parser.add_argument('--interval', help='Interval time (seconds) (default: 10)', type=int, default=10)
 
     args = parser.parse_args()
     variables = vars(args)
