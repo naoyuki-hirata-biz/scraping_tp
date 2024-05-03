@@ -11,7 +11,11 @@
   },
   "test": {
     "name": "tester",
-    "uri": "file://..."
+    "filename": "tests/results.csv",
+    "areas": {
+      "tokyo": ["東京都西東京市"]
+    },
+    "uri": "file:///opt/python/scraping_tp/scraping_tp/static/html/tp_01.html"
   },
   "development": {
     "name": "developer"
