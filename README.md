@@ -11,3 +11,8 @@ git clone https://github.com/naoyuki-hirata-biz/scraping_tp.git
 cd scraping_tp
 poetry install
 ```
+
+### Usage
+```
+poetry run python scraping_tp.py 
+```

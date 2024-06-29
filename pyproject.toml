@@ -6,7 +6,7 @@ authors = ["unknown"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.9"
+python = ">=3.9.0, <3.10"
 dynaconf = "^3.2.5"
 requests = "^2.31.0"
 beautifulsoup4 = "^4.12.3"
